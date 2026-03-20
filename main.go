@@ -25,12 +25,12 @@ func process(
 			return err
 		}
 		if _, err = db.ExecContext(ctx, query); err != nil {
-			return fmt.Errorf("error creating table %s: %v", schema.TableName(), err)
+			return fmt.Errorf("error creating table %s: %w", schema.TableName(), err)
 		}
 	case ActionDrop:
 		query := DropTableSQL(schema)
 		if _, err := db.ExecContext(ctx, query); err != nil {
-			return fmt.Errorf("error dropping table %s: %v", schema.TableName(), err)
+			return fmt.Errorf("error dropping table %s: %w", schema.TableName(), err)
 		}
 	case ActionAlter:
 		queries, err := GenerateSchemaDiffs(db, schema, dialect)
@@ -40,26 +40,21 @@ func process(
 
 		for _, query := range queries {
 			if _, err := db.ExecContext(ctx, query); err != nil {
-				return fmt.Errorf("error altering table %s: %v", schema.TableName(), err)
+				return fmt.Errorf("error altering table %s: %w", schema.TableName(), err)
 			}
 		}
 	}
 	return nil
 }
 
-func Migrate(ctx context.Context, db *sqlx.DB, action Action, dialect SQLDialect, schemas []any) error {
+func Migrate(ctx context.Context, db *sqlx.DB, action Action, dialect SQLDialect, schemas []Schema) error {
 	if err := action.Validate(); err != nil {
 		return err
 	}
 	if err := dialect.Validate(); err != nil {
 		return err
 	}
-
 	for _, schema := range schemas {
-		schema, ok := schema.(Schema)
-		if !ok {
-			return fmt.Errorf("schema does not implement TableName() string")
-		}
 		if err := process(ctx, db, action, schema, dialect); err != nil {
 			return err
 		}

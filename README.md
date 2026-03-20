@@ -7,6 +7,39 @@ A lightweight, reflection-based SQL schema migration library for Go. Supports Po
 go get github.com/jayobado/go-sql-migrate
 ```
 
+## Dependencies
+
+This module uses [sqlx](https://github.com/jmoiron/sqlx) for database interaction. A `*sqlx.DB` instance is required to use `Migrate` and `GenerateSchemaDiffs`.
+```bash
+go get github.com/jmoiron/sqlx
+```
+
+You will also need a driver for your database:
+```bash
+# PostgreSQL
+go get github.com/jackc/pgx/v5/stdlib
+
+# MySQL
+go get github.com/go-sql-driver/mysql
+
+# SQLite
+go get github.com/mattn/go-sqlite3
+```
+
+Register the driver with sqlx before passing the `*sqlx.DB` to this module:
+```go
+// PostgreSQL example
+import (
+    "github.com/jmoiron/sqlx"
+    _ "github.com/jackc/pgx/v5/stdlib"
+)
+
+db, err := sqlx.Open("pgx", "postgres://user:pass@localhost:5432/mydb")
+if err != nil {
+    log.Fatal(err)
+}
+```
+
 ## Usage
 
 ### Define a schema
@@ -28,7 +61,11 @@ func (u User) TableName() string { return "users" }
 ```go
 import migrate "github.com/jayobado/go-sql-migrate"
 
-err := migrate.Migrate(ctx, db, migrate.ActionCreate, migrate.PostgreSQL, User{})
+schemas := []migrate.Schema{
+    User{},
+}
+
+err := migrate.Migrate(ctx, db, migrate.ActionCreate, migrate.PostgreSQL, schemas)
 if err != nil {
     log.Fatal(err)
 }
@@ -36,13 +73,16 @@ if err != nil {
 
 Pass multiple schemas in one call:
 ```go
-err := migrate.Migrate(ctx, db,
-    migrate.ActionCreate,
-    migrate.PostgreSQL,
+schemas := []migrate.Schema{
     User{},
     Post{},
     Comment{},
-)
+}
+
+err := migrate.Migrate(ctx, db, migrate.ActionCreate, migrate.PostgreSQL, schemas)
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 ## Actions
