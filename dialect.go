@@ -7,6 +7,7 @@ import (
 )
 
 type SQLDialect string
+type Action string
 
 const (
 	PostgreSQL SQLDialect = "postgres"
@@ -14,68 +15,90 @@ const (
 	SQLite     SQLDialect = "sqlite"
 )
 
-func (prop SQLDialect) Validate() error {
-	switch prop {
+const (
+	ActionCreate Action = "create"
+	ActionDrop   Action = "drop"
+	ActionAlter  Action = "alter"
+)
+
+func (d SQLDialect) Validate() error {
+	switch d {
 	case PostgreSQL, MySQL, SQLite:
 		return nil
 	default:
-		return fmt.Errorf("invalid sql dialect: %s", prop)
+		return fmt.Errorf("invalid sql dialect: %q", d)
 	}
 }
 
+func (a Action) Validate() error {
+	switch a {
+	case ActionCreate, ActionDrop, ActionAlter:
+		return nil
+	default:
+		return fmt.Errorf("invalid action: %q", a)
+	}
+}
 
 func Map(t reflect.Type, dialect SQLDialect) string {
-	slog.Info("Mapping type %s to SQL for dialect %s", t.Name(), dialect)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
+
+	var sqlType string
+
 	switch t.Name() {
 	case "UUID":
 		switch dialect {
 		case PostgreSQL:
-			return "UUID"
+			sqlType = "UUID"
 		case MySQL:
-			return "CHAR(36)"
-		case SQLite:
-			return "TEXT"
+			sqlType = "CHAR(36)"
+		default:
+			sqlType = "TEXT"
 		}
 	case "string":
 		switch dialect {
 		case PostgreSQL, MySQL:
-			return "VARCHAR(255)"
-		case SQLite:
-			return "TEXT"
+			sqlType = "VARCHAR(255)"
+		default:
+			sqlType = "TEXT"
 		}
 	case "float32", "float64":
-		return "NUMERIC"
+		sqlType = "NUMERIC"
 	case "int", "int32":
-		return "INTEGER"
+		sqlType = "INTEGER"
 	case "int64":
 		if dialect == MySQL {
-			return "BIGINT"
+			sqlType = "BIGINT"
+		} else {
+			sqlType = "INTEGER"
 		}
-		return "INTEGER"
 	case "bool":
 		if dialect == MySQL {
-			return "TINYINT(1)"
+			sqlType = "TINYINT(1)"
+		} else {
+			sqlType = "BOOLEAN"
 		}
-		return "BOOLEAN"
 	case "Time":
 		switch dialect {
 		case PostgreSQL:
-			return "TIMESTAMPTZ"
-		case MySQL, SQLite:
-			return "DATETIME"
+			sqlType = "TIMESTAMPTZ"
+		default:
+			sqlType = "DATETIME"
 		}
 	case "RawMessage":
 		switch dialect {
 		case PostgreSQL:
-			return "JSONB"
+			sqlType = "JSONB"
 		case MySQL:
-			return "JSON"
-		case SQLite:
-			return "TEXT"
+			sqlType = "JSON"
+		default:
+			sqlType = "TEXT"
 		}
+	default:
+		slog.Warn("unknown Go type, defaulting to TEXT", "type", t.Name(), "dialect", dialect)
+		sqlType = "TEXT"
 	}
-	return "TEXT"
+
+	return sqlType
 }

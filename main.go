@@ -2,40 +2,38 @@ package migrate
 
 import (
 	"fmt"
-	"errors"
 	"context"
 	
 	"github.com/jmoiron/sqlx"
 )
 
+type Schema interface {
+	TableName() string
+}
+
 func process(
 	ctx context.Context,
 	db *sqlx.DB, 
-	action string,
+	action Action,
 	schema Schema,
-	dialect *SQLDialect,
+	dialect SQLDialect,
 ) error {
-
 	switch action {
-	case "create":
-		query, err := GenerateCreateTableSQL(schema, PostgreSQL)
+	case ActionCreate:
+		query, err := GenerateCreateTableSQL(schema, dialect)
 		if err != nil {
 			return err
 		}
 		if _, err = db.ExecContext(ctx, query); err != nil {
 			return fmt.Errorf("error creating table %s: %v", schema.TableName(), err)
 		}
-	case "drop":
+	case ActionDrop:
 		query := DropTableSQL(schema)
 		if _, err := db.ExecContext(ctx, query); err != nil {
 			return fmt.Errorf("error dropping table %s: %v", schema.TableName(), err)
 		}
-	case "alter":
-		if dialect == nil {
-			return errors.New("dialect must be indicated to run alter command")
-		}
-
-		queries, err := GenerateAlterTableAddColumns(db, schema, *dialect)
+	case ActionAlter:
+		queries, err := GenerateSchemaDiffs(db, schema, dialect)
 		if err != nil {
 			return err
 		}
@@ -45,14 +43,23 @@ func process(
 				return fmt.Errorf("error altering table %s: %v", schema.TableName(), err)
 			}
 		}
-	default:
-		return errors.New("action entered is incorrect")
 	}
 	return nil
 }
 
-func Migrate(ctx context.Context, db *sqlx.DB, action string, schemas []Schema, dialect *SQLDialect) error {
+func Migrate(ctx context.Context, db *sqlx.DB, action Action, dialect SQLDialect, schemas []any) error {
+	if err := action.Validate(); err != nil {
+		return err
+	}
+	if err := dialect.Validate(); err != nil {
+		return err
+	}
+
 	for _, schema := range schemas {
+		schema, ok := schema.(Schema)
+		if !ok {
+			return fmt.Errorf("schema does not implement TableName() string")
+		}
 		if err := process(ctx, db, action, schema, dialect); err != nil {
 			return err
 		}

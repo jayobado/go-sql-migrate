@@ -1,75 +1,57 @@
 package migrate
 
 import (
-	"fmt"
-	"strings"
-	"log/slog"
-
 	"database/sql"
+	"fmt"
+	"log/slog"
+	"strings"
+
 	"github.com/jmoiron/sqlx"
 )
 
 type ColumnInfo struct {
-	Name      string
-	Type      string
-	Cid       *int
-	NotNull   *int
-	DfltValue *sql.NullString
-	Pk        *int
+	Name string         `db:"name"`
+	Type string         `db:"type"`
+	// SQLite-only fields — nil for Postgres/MySQL
+	Cid       *int            `db:"cid"`
+	NotNull   *int            `db:"notnull"`
+	DfltValue *sql.NullString `db:"dflt_value"`
+	Pk        *int            `db:"pk"`
 }
 
-func sqlQuery(tableName string, dialect SQLDialect) string {
+func columnQuery(tableName string, dialect SQLDialect) (string, error) {
 	tableName = strings.ReplaceAll(tableName, `"`, "")
 	switch dialect {
-	case PostgreSQL:
-		return fmt.Sprintf(`SELECT column_name AS name, data_type AS type FROM information_schema.columns WHERE table_name = '%s'`, tableName)
-	case MySQL:
-		return fmt.Sprintf(`SELECT column_name AS name, data_type AS type FROM information_schema.columns WHERE table_name = '%s'`, tableName)
+	case PostgreSQL, MySQL:
+		return fmt.Sprintf(
+			`SELECT column_name AS name, data_type AS type FROM information_schema.columns WHERE table_name = '%s'`,
+			tableName,
+		), nil
 	case SQLite:
-		return fmt.Sprintf(`PRAGMA table_info("%s")`, tableName)
+		return fmt.Sprintf(`PRAGMA table_info("%s")`, tableName), nil
 	default:
-		return ""
+		return "", fmt.Errorf("unsupported dialect: %q", dialect)
 	}
 }
 
 func GetTableColumns(db *sqlx.DB, tableName string, dialect SQLDialect) (map[string]string, error) {
+	query, err := columnQuery(tableName, dialect)
+	if err != nil {
+		return nil, err
+	}
+
+	slog.Debug("fetching table columns", "table", tableName, "dialect", dialect)
+
 	var cols []ColumnInfo
-
-	query := sqlQuery(tableName, dialect)
-	if query == "" {
-		return nil, fmt.Errorf("unsupported SQL dialect: %s", dialect)
-	}
-	slog.Info("Executing query to get columns for", "table", tableName, "query", query)
-
 	if err := db.Select(&cols, query); err != nil {
-		return nil, fmt.Errorf("failed to get columns for table %s: %w", tableName, err)
+		return nil, fmt.Errorf("get columns for %s: %w", tableName, err)
 	}
 
-	colsMap := make(map[string]string)
+	result := make(map[string]string, len(cols))
 	for _, col := range cols {
-		colName := strings.ToLower(col.Name)
-		colType := strings.ToUpper(col.Type)
-		if col.Cid != nil {
-			slog.Info("Column has Cid", "name", colName, "key", *col.Cid)
-		}
-		if col.NotNull != nil {
-			slog.Info("Column has NotNull", "name", colName, "key", *col.NotNull)
-		}
-		if col.DfltValue != nil && col.DfltValue.Valid {
-			slog.Info("Column has Default Value", 
-				"name", colName, 
-				slog.String("value", col.DfltValue.String),
-			)
-		}
-		if col.Pk != nil {
-			slog.Info("Primary Key:", "name", colName, "key", *col.Pk)
-		}
-		colsMap[colName] = colType
-		slog.Info("", "name", colName, "type", colType)
+		result[strings.ToLower(col.Name)] = strings.ToUpper(col.Type)
 	}
-	slog.Debug("colums fetched", 
-		"table", tableName,
-		"map", colsMap,
-	)
-	return colsMap, nil
+
+	slog.Debug("columns fetched", "table", tableName, "count", len(result))
+	return result, nil
 }
