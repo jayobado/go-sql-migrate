@@ -39,8 +39,22 @@ func (a Action) Validate() error {
 	}
 }
 
+func NewAction(value string) Action {
+	switch value {
+	case "create":
+		return ActionCreate
+	case "drop":
+		return ActionDrop
+	case "alter":
+		return ActionAlter
+	default:
+		return ""
+	}
+}
+
+
 func Map(t reflect.Type, dialect SQLDialect) string {
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 

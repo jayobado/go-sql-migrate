@@ -93,6 +93,22 @@ if err != nil {
 | Drop | `migrate.ActionDrop` | Runs `DROP TABLE IF EXISTS` |
 | Alter | `migrate.ActionAlter` | Adds missing columns and updates changed column types |
 
+Use the constants directly or construct an `Action` from a string using `NewAction` — useful when the action comes from a CLI flag, environment variable, or config file:
+```go
+// From a constant
+action := migrate.ActionCreate
+
+// From a string (e.g. CLI flag or env var)
+action := migrate.NewAction(os.Getenv("MIGRATE_ACTION"))
+
+err := migrate.Migrate(ctx, db, action, migrate.PostgreSQL, schemas)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+An unrecognised value returns an empty `Action` which fails validation inside `Migrate` with a clear error — no silent no-ops.
+
 ## Dialects
 
 | Dialect | Constant |
